@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResumeAI — Results</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <style>
+      .results-header {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        margin-bottom: 32px;
+      }
+      .results-meta { flex: 1; }
+      .results-role { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+      .results-level { font-size: 14px; color: var(--text-muted); }
+    </style>
+  </head>
+  <body class="page">
+    <nav class="nav">
+      <a href="/landing/" class="nav-logo">ResumeAI</a>
+      <a href="/pricing/" class="btn btn-primary" style="padding:8px 18px;">Upgrade to save variants</a>
+    </nav>
+
+    <div class="page-inner">
+      <div class="steps">
+        <div class="step done"><span class="step-dot">✓</span><span>Upload</span></div>
+        <div class="step-line"></div>
+        <div class="step done"><span class="step-dot">✓</span><span>Target role</span></div>
+        <div class="step-line"></div>
+        <div class="step done"><span class="step-dot">✓</span><span>Questions</span></div>
+        <div class="step-line"></div>
+        <div class="step active"><span class="step-dot">4</span><span>Download</span></div>
+      </div>
+
+      <div class="results-header">
+        <div class="score-ring">
+          <span class="score-number" id="fitScore">—</span>
+          <span class="score-label">fit score</span>
+        </div>
+        <div class="results-meta">
+          <p class="results-role" id="resultsRole">—</p>
+          <p class="results-level" id="resultsLevel">—</p>
+        </div>
+      </div>
+
+      <div class="card result-section">
+        <p class="result-section-title">Strengths</p>
+        <div class="tag-list" id="strengthsList">—</div>
+      </div>
+
+      <div class="card result-section">
+        <p class="result-section-title">Gaps</p>
+        <div class="tag-list" id="gapsList">—</div>
+      </div>
+
+      <div class="card result-section">
+        <p class="result-section-title">ATS flags</p>
+        <div id="atsFlagsList" class="muted">—</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px;">Download your variant</h2>
+
+      <button class="download-btn" id="downloadLatex">
+        <div class="download-btn-icon">📝</div>
+        <div class="download-btn-text">
+          <span class="download-btn-title">LaTeX source (.tex)</span>
+          <span class="download-btn-hint">Edit and compile with any LaTeX engine</span>
+        </div>
+        <span style="color:var(--text-muted);font-size:13px;">↓</span>
+      </button>
+
+      <button class="download-btn mt-16" id="downloadPdf">
+        <div class="download-btn-icon">📄</div>
+        <div class="download-btn-text">
+          <span class="download-btn-title">PDF (.pdf)</span>
+          <span class="download-btn-hint">Ready to attach and submit</span>
+        </div>
+        <span style="color:var(--text-muted);font-size:13px;">↓</span>
+      </button>
+
+      <div class="card mt-24" style="background:var(--primary-soft);border-color:var(--primary-glow);">
+        <p style="margin:0 0 4px;font-weight:600;">Want to save this variant and generate more?</p>
+        <p class="muted" style="margin:0 0 14px;">Upgrade to keep all your variants, track versions, and generate cover letters.</p>
+        <a href="/pricing/" class="btn btn-primary">See plans →</a>
+      </div>
+
+      <div class="mt-24" style="text-align:center;">
+        <a href="/upload/" class="btn btn-ghost">Start over with a new resume</a>
+      </div>
+    </div>
+
+    <script src="/assets/backend-client.js"></script>
+    <script src="/assets/flow-state.js"></script>
+    <script>
+      "use strict";
+
+      const access = FLOW.canAccess("/results/");
+      if (!access.ok) window.location.href = access.next;
+
+      const state    = FLOW.getState();
+      const analysis = state.analysis || {};
+      const variant  = state.variant  || {};
+
+      // Populate header
+      document.getElementById("resultsRole").textContent  = state.target_role  || "—";
+      document.getElementById("resultsLevel").textContent = state.target_level || "—";
+      document.getElementById("fitScore").textContent     = analysis.fit_score != null ? analysis.fit_score : "—";
+
+      // Strengths
+      const strengthsEl = document.getElementById("strengthsList");
+      const strengths = analysis.strengths || ["Strong technical signal", "Clear ownership language", "Measurable impact"];
+      strengthsEl.innerHTML = strengths.map(s => `<span class="tag good">${s}</span>`).join("");
+
+      // Gaps
+      const gapsEl = document.getElementById("gapsList");
+      const gaps = analysis.gaps || ["Add scale metrics", "Clarify team scope", "ATS keyword coverage"];
+      gapsEl.innerHTML = gaps.map(g => `<span class="tag gap">${g}</span>`).join("");
+
+      // ATS flags
+      const atsEl = document.getElementById("atsFlagsList");
+      const flags = analysis.ats_flags || [];
+      atsEl.innerHTML = flags.length
+        ? flags.map(f => `<p style="margin:4px 0;font-size:13px;">• ${f}</p>`).join("")
+        : '<p style="margin:0;font-size:13px;">No major ATS issues detected.</p>';
+
+      // Downloads
+      function downloadText(filename, content) {
+        const blob = new Blob([content], { type: "text/plain" });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement("a");
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      document.getElementById("downloadLatex").addEventListener("click", () => {
+        const tex = variant.latex || variant.message || "% LaTeX variant will appear here once the backend is connected.\n";
+        downloadText("resume-variant.tex", tex);
+      });
+
+      document.getElementById("downloadPdf").addEventListener("click", () => {
+        // PDF compilation requires server-side pdflatex — redirect to backend endpoint
+        if (window.API && API.isEnabledSync()) {
+          window.location.href = "/api/resume/download-pdf";
+        } else {
+          alert("PDF download requires the API backend to be running. Use the LaTeX source for now.");
+        }
+      });
+    </script>
+  </body>
+</html>

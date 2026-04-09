@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResumeAI — Settings</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="page">
+    <nav class="nav">
+      <a href="/landing/" class="nav-logo">ResumeAI</a>
+      <div class="nav-actions">
+        <a href="/upload/" class="btn btn-primary">New variant</a>
+      </div>
+    </nav>
+
+    <div class="page-inner">
+      <h1 class="page-title">Settings</h1>
+
+      <div class="card">
+        <p class="result-section-title">Account</p>
+        <div class="flex items-center gap-12">
+          <div style="width:40px;height:40px;border-radius:50%;background:var(--primary-soft);border:1px solid var(--primary-glow);display:flex;align-items:center;justify-content:center;font-size:16px;">👤</div>
+          <div>
+            <div style="font-size:14px;font-weight:600;" id="accountEmail">—</div>
+            <div class="muted" id="accountPlan">Free plan</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="result-section-title">Subscription</p>
+        <div class="flex items-center" style="margin-bottom:16px;">
+          <span id="planName" style="font-size:15px;font-weight:600;">Free</span>
+          <span class="muted" style="margin-left:auto;" id="planStatus">—</span>
+        </div>
+        <a href="/pricing/" class="btn btn-primary">Upgrade plan</a>
+      </div>
+
+      <div class="card">
+        <p class="result-section-title">Danger zone</p>
+        <button class="btn btn-ghost" id="signOutBtn">Sign out</button>
+        <button class="btn btn-ghost" id="resetBtn" style="margin-left:8px;color:var(--error);">Reset session</button>
+      </div>
+    </div>
+
+    <script src="/assets/backend-client.js"></script>
+    <script src="/assets/flow-state.js"></script>
+    <script>
+      "use strict";
+      const state = FLOW.getState();
+      document.getElementById("accountEmail").textContent = state.user_email || "Not signed in";
+      document.getElementById("accountPlan").textContent  = state.plan_tier ? `${state.plan_tier} plan` : "Free plan";
+      document.getElementById("planName").textContent     = state.plan_tier || "Free";
+      document.getElementById("planStatus").textContent   = state.subscription_status || "No active subscription";
+
+      document.getElementById("signOutBtn").addEventListener("click", async () => {
+        if (window.API && API.isEnabledSync()) {
+          try { await API.signOut(); } catch (_) {}
+        }
+        FLOW.reset();
+        window.location.href = "/landing/";
+      });
+
+      document.getElementById("resetBtn").addEventListener("click", () => {
+        if (confirm("Reset all session state?")) {
+          FLOW.reset();
+          window.location.href = "/landing/";
+        }
+      });
+    </script>
+  </body>
+</html>

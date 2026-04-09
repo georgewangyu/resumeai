@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResumeAI — Pricing</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="page">
+    <nav class="nav">
+      <a href="/landing/" class="nav-logo">ResumeAI</a>
+      <div class="nav-actions">
+        <a href="/login/" class="btn btn-ghost">Sign in</a>
+      </div>
+    </nav>
+
+    <div class="page-inner" style="text-align:center;">
+      <h1 class="page-title" style="font-size:36px;letter-spacing:-1px;">Simple pricing</h1>
+      <p class="page-subtitle">Start free, upgrade when you need more variants.</p>
+
+      <div class="pricing-grid" style="margin-top:40px;">
+        <div class="plan-card">
+          <p class="plan-name">Free</p>
+          <p class="plan-price">$0 <span>/ month</span></p>
+          <p class="plan-desc">Try the full flow, one variant.</p>
+          <ul class="plan-features">
+            <li>1 resume variant per month</li>
+            <li>PDF + LaTeX download</li>
+            <li>3-lens analysis (HM, Recruiter, ATS)</li>
+            <li>Structured gap questions</li>
+          </ul>
+          <a href="/upload/" class="btn btn-ghost" style="width:100%;justify-content:center;">Get started free</a>
+        </div>
+
+        <div class="plan-card featured">
+          <span class="plan-pill">MOST POPULAR</span>
+          <p class="plan-name">Pro</p>
+          <p class="plan-price">$19 <span>/ month</span></p>
+          <p class="plan-desc">Unlimited variants. Save and version everything.</p>
+          <ul class="plan-features">
+            <li>Unlimited variants</li>
+            <li>All 4 variant families</li>
+            <li>Version history</li>
+            <li>Cover letter draft</li>
+            <li>Priority Claude analysis</li>
+          </ul>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;" id="checkoutBtn" data-tier="pro">Start free trial</button>
+        </div>
+      </div>
+
+      <p class="muted" style="margin-top:24px;">No credit card required for free tier · Cancel anytime</p>
+    </div>
+
+    <script src="/assets/backend-client.js"></script>
+    <script src="/assets/flow-state.js"></script>
+    <script>
+      "use strict";
+      document.getElementById("checkoutBtn").addEventListener("click", async function () {
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = "Loading…";
+        try {
+          if (window.API && API.isEnabledSync()) {
+            const result = await API.checkoutSession({ tier: btn.dataset.tier });
+            if (result.checkout?.url) {
+              window.location.href = result.checkout.url;
+              return;
+            }
+          }
+          // Fallback to local checkout page
+          FLOW.set({ plan_tier: btn.dataset.tier });
+          window.location.href = "/checkout/";
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = "Start free trial";
+          alert(err.message || "Something went wrong.");
+        }
+      });
+    </script>
+  </body>
+</html>

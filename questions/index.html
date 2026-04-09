@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResumeAI — Questions</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <style>
+      .question-card {
+        background: var(--bg-panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        margin-bottom: 12px;
+      }
+      .question-label {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 6px;
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+      }
+      .question-num {
+        min-width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--primary-soft);
+        border: 1px solid var(--primary-glow);
+        color: var(--primary);
+        font-size: 11px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+      .question-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin: 4px 0 10px 32px;
+      }
+    </style>
+  </head>
+  <body class="page">
+    <nav class="nav">
+      <a href="/target/" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">← Back</a>
+      <a href="/landing/" class="nav-logo" style="position:absolute;left:50%;transform:translateX(-50%);">ResumeAI</a>
+    </nav>
+
+    <div class="page-inner">
+      <div class="steps">
+        <div class="step done"><span class="step-dot">✓</span><span>Upload</span></div>
+        <div class="step-line"></div>
+        <div class="step done"><span class="step-dot">✓</span><span>Target role</span></div>
+        <div class="step-line"></div>
+        <div class="step active"><span class="step-dot">3</span><span>Questions</span></div>
+        <div class="step-line"></div>
+        <div class="step"><span class="step-dot">4</span><span>Download</span></div>
+      </div>
+
+      <h1 class="page-title">Fill the gaps</h1>
+      <p class="page-subtitle">These questions help us strengthen your resume with specifics that aren't in the original. Answer in 1–3 sentences each.</p>
+
+      <div id="questionsContainer">
+        <!-- Questions injected by JS -->
+      </div>
+
+      <div class="mt-24">
+        <button class="btn btn-primary btn-lg" id="buildBtn">Build variant →</button>
+        <div class="status is-info" id="statusMsg" style="display:none;"></div>
+      </div>
+    </div>
+
+    <script src="/assets/backend-client.js"></script>
+    <script src="/assets/flow-state.js"></script>
+    <script>
+      "use strict";
+
+      const access = FLOW.canAccess("/questions/");
+      if (!access.ok) window.location.href = access.next;
+
+      const state = FLOW.getState();
+      const container = document.getElementById("questionsContainer");
+      const buildBtn  = document.getElementById("buildBtn");
+      const statusMsg = document.getElementById("statusMsg");
+
+      // Default questions when no backend analysis is available
+      const DEFAULT_QUESTIONS = [
+        {
+          id: "q1",
+          text: "What is the largest scale system you have owned or built? Include numbers (users, requests/sec, data volume) if you have them.",
+          hint: "Be specific — team size, traffic, storage scale, uptime requirements.",
+        },
+        {
+          id: "q2",
+          text: "What is the highest-impact project you shipped in the last 2 years? What was the measurable outcome?",
+          hint: "Focus on the result first, then describe what you built.",
+        },
+        {
+          id: "q3",
+          text: "Describe a time you diagnosed and fixed a significant production issue. What was the impact and how did you prevent recurrence?",
+          hint: "Include time-to-detect, time-to-resolve, and any systemic fixes.",
+        },
+        {
+          id: "q4",
+          text: "What technical decisions have you led or strongly influenced? What tradeoffs did you weigh?",
+          hint: "Design reviews, architecture choices, build-vs-buy, tech selection.",
+        },
+        {
+          id: "q5",
+          text: "Any missing metrics in your current resume you can fill in now? (e.g. latency improvements, cost savings, revenue impact, team size led)",
+          hint: "Even rough numbers are better than none — e.g. 'reduced p99 latency by ~40%'.",
+        },
+      ];
+
+      // Use analysis questions if available, else defaults
+      const questions = (state.analysis && state.analysis.structured_questions) || DEFAULT_QUESTIONS;
+
+      function renderQuestions(qs) {
+        container.innerHTML = "";
+        qs.forEach((q, i) => {
+          const card = document.createElement("div");
+          card.className = "question-card";
+          card.innerHTML = `
+            <div class="question-label">
+              <span class="question-num">${i + 1}</span>
+              <span>${q.text || q}</span>
+            </div>
+            ${q.hint ? `<p class="question-hint">${q.hint}</p>` : ""}
+            <textarea class="textarea" id="answer_${q.id || i}" placeholder="Your answer…" style="min-height:80px;"></textarea>
+          `;
+          container.appendChild(card);
+        });
+      }
+
+      renderQuestions(questions);
+
+      buildBtn.addEventListener("click", async () => {
+        buildBtn.disabled = true;
+        statusMsg.style.display = "block";
+        statusMsg.textContent = "Building your variant…";
+        statusMsg.className = "status is-info";
+
+        try {
+          const answers = {};
+          questions.forEach((q, i) => {
+            const id = q.id || i;
+            const el = document.getElementById(`answer_${id}`);
+            answers[id] = el ? el.value.trim() : "";
+          });
+
+          FLOW.setAnswered(answers, state.analysis);
+
+          if (window.API && API.isEnabledSync()) {
+            const freshState = FLOW.getState();
+            const result = await API.buildVariant({
+              resume_text:     freshState.resume_text,
+              target_role:     freshState.target_role,
+              target_level:    freshState.target_level,
+              job_description: freshState.job_description,
+              variant_family:  freshState.variant_family,
+              analysis:        freshState.analysis,
+              answers,
+            });
+            FLOW.setVariant(result.variant);
+          } else {
+            // Simulated variant for offline mode
+            FLOW.setVariant({ simulated: true, message: "Variant generation requires API backend." });
+          }
+
+          window.location.href = "/results/";
+        } catch (err) {
+          statusMsg.textContent = err.message || "Build failed.";
+          statusMsg.className = "status is-error";
+          buildBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

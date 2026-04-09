@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResumeAI — Sign in</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="page">
+    <nav class="nav">
+      <a href="/landing/" class="nav-logo">ResumeAI</a>
+    </nav>
+
+    <div class="page-inner" style="max-width:420px;padding-top:80px;">
+      <h1 class="page-title">Sign in</h1>
+      <p class="page-subtitle">Continue where you left off.</p>
+
+      <div class="card">
+        <div class="field">
+          <label class="label" for="emailInput">Email</label>
+          <input class="input" id="emailInput" type="email" placeholder="you@example.com" value="tester@resumeai.local" />
+        </div>
+        <div class="mt-16">
+          <button class="btn btn-primary btn-lg" id="signInBtn" style="width:100%;justify-content:center;">Sign in</button>
+        </div>
+        <p class="status is-info" id="statusMsg" style="margin-top:12px;">Use any email for local dev.</p>
+      </div>
+
+      <p class="muted" style="text-align:center;margin-top:20px;">
+        No account? <a href="/pricing/" style="color:var(--primary);">Get started free →</a>
+      </p>
+    </div>
+
+    <script src="/assets/backend-client.js"></script>
+    <script src="/assets/flow-state.js"></script>
+    <script>
+      "use strict";
+      const emailInput = document.getElementById("emailInput");
+      const signInBtn  = document.getElementById("signInBtn");
+      const statusMsg  = document.getElementById("statusMsg");
+
+      signInBtn.addEventListener("click", async () => {
+        const email = emailInput.value.trim();
+        if (!email) return;
+        signInBtn.disabled = true;
+        statusMsg.textContent = "Signing in…";
+        statusMsg.className = "status is-info";
+        try {
+          if (window.API && API.isEnabledSync()) {
+            await API.devSignIn({ email });
+          }
+          FLOW.set({ user_email: email });
+          window.location.href = "/upload/";
+        } catch (err) {
+          statusMsg.textContent = err.message || "Sign in failed.";
+          statusMsg.className = "status is-error";
+          signInBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

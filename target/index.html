@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResumeAI — Target role</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="page">
+    <nav class="nav">
+      <a href="/upload/" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">← Back</a>
+      <a href="/landing/" class="nav-logo" style="position:absolute;left:50%;transform:translateX(-50%);">ResumeAI</a>
+    </nav>
+
+    <div class="page-inner">
+      <div class="steps">
+        <div class="step done"><span class="step-dot">✓</span><span>Upload</span></div>
+        <div class="step-line"></div>
+        <div class="step active"><span class="step-dot">2</span><span>Target role</span></div>
+        <div class="step-line"></div>
+        <div class="step"><span class="step-dot">3</span><span>Questions</span></div>
+        <div class="step-line"></div>
+        <div class="step"><span class="step-dot">4</span><span>Download</span></div>
+      </div>
+
+      <h1 class="page-title">What role are you targeting?</h1>
+      <p class="page-subtitle">We'll tailor the resume variant and analysis to this specific role and level.</p>
+
+      <div class="card">
+        <div class="field">
+          <label class="label" for="roleInput">Job title</label>
+          <input class="input" id="roleInput" type="text" placeholder="e.g. Senior Software Engineer, Staff ML Engineer" />
+        </div>
+
+        <div class="field">
+          <label class="label" for="levelSelect">Seniority level</label>
+          <select class="select" id="levelSelect">
+            <option value="">Select level…</option>
+            <option value="entry">Entry / Junior (0–2 yrs)</option>
+            <option value="mid">Mid-level (2–5 yrs)</option>
+            <option value="senior">Senior (5–8 yrs)</option>
+            <option value="staff">Staff / Principal (8+ yrs)</option>
+            <option value="manager">Engineering Manager</option>
+            <option value="director">Director+</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="label" for="variantSelect">Variant family</label>
+          <select class="select" id="variantSelect">
+            <option value="general">General (balanced)</option>
+            <option value="data_infra">Data Infrastructure (Kafka, Spark, pipelines)</option>
+            <option value="ai_infra">AI / ML Infrastructure (training, serving, platform)</option>
+            <option value="product_backend">Product Backend (APIs, features, velocity)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="label" for="jdInput">Job description <span class="muted">(optional but recommended)</span></label>
+          <textarea class="textarea" id="jdInput" placeholder="Paste the full job description here…" style="min-height:180px;"></textarea>
+        </div>
+      </div>
+
+      <div class="mt-24">
+        <button class="btn btn-primary btn-lg" id="continueBtn" disabled>Analyze resume →</button>
+        <div class="status is-info" id="statusMsg" style="display:none;"></div>
+      </div>
+    </div>
+
+    <script src="/assets/backend-client.js"></script>
+    <script src="/assets/flow-state.js"></script>
+    <script>
+      "use strict";
+
+      // Gate: must have uploaded resume
+      const access = FLOW.canAccess("/target/");
+      if (!access.ok) window.location.href = access.next;
+
+      const roleInput   = document.getElementById("roleInput");
+      const levelSelect = document.getElementById("levelSelect");
+      const variantSelect = document.getElementById("variantSelect");
+      const jdInput     = document.getElementById("jdInput");
+      const continueBtn = document.getElementById("continueBtn");
+      const statusMsg   = document.getElementById("statusMsg");
+
+      function checkReady() {
+        continueBtn.disabled = !roleInput.value.trim() || !levelSelect.value;
+      }
+
+      roleInput.addEventListener("input", checkReady);
+      levelSelect.addEventListener("change", checkReady);
+
+      continueBtn.addEventListener("click", async () => {
+        continueBtn.disabled = true;
+        statusMsg.style.display = "block";
+        statusMsg.textContent = "Analyzing your resume…";
+        statusMsg.className = "status is-info";
+
+        const role    = roleInput.value.trim();
+        const level   = levelSelect.value;
+        const variant = variantSelect.value;
+        const jd      = jdInput.value.trim();
+
+        try {
+          FLOW.setTargeted(role, level, jd);
+          FLOW.set({ variant_family: variant });
+
+          if (window.API && API.isEnabledSync()) {
+            const state = FLOW.getState();
+            const result = await API.analyzeResume({
+              resume_text: state.resume_text,
+              target_role: role,
+              target_level: level,
+              job_description: jd,
+              variant_family: variant,
+            });
+            FLOW.set({ analysis: result.analysis });
+          }
+
+          window.location.href = "/questions/";
+        } catch (err) {
+          statusMsg.textContent = err.message || "Analysis failed.";
+          statusMsg.className = "status is-error";
+          continueBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

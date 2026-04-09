@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResumeAI — Upload resume</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="page">
+    <nav class="nav">
+      <a href="/landing/" class="nav-logo">ResumeAI</a>
+    </nav>
+
+    <div class="page-inner">
+      <div class="steps">
+        <div class="step active">
+          <span class="step-dot">1</span>
+          <span>Upload</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <span class="step-dot">2</span>
+          <span>Target role</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <span class="step-dot">3</span>
+          <span>Questions</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <span class="step-dot">4</span>
+          <span>Download</span>
+        </div>
+      </div>
+
+      <h1 class="page-title">Upload your resume</h1>
+      <p class="page-subtitle">We'll extract your experience and analyze it across three lenses: hiring manager, recruiter, and ATS.</p>
+
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept=".pdf,.docx,.txt" />
+        <div class="upload-icon">📄</div>
+        <p class="upload-title">Drop your resume here</p>
+        <p class="upload-hint">PDF, DOCX, or TXT · Max 5MB</p>
+      </div>
+
+      <div id="filePreview" style="display:none;" class="card mt-16">
+        <div class="flex items-center gap-12">
+          <span style="font-size:24px;">📄</span>
+          <div>
+            <div style="font-size:14px;font-weight:600;" id="fileName">—</div>
+            <div class="muted" id="fileSize">—</div>
+          </div>
+          <button class="btn btn-ghost" id="clearFile" style="margin-left:auto;">Remove</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="card" style="display:none;" id="pasteSection">
+        <p class="muted" style="margin:0 0 12px;">Or paste your resume text directly:</p>
+        <textarea class="textarea" id="pasteInput" placeholder="Paste resume text here…" style="min-height:200px;"></textarea>
+      </div>
+
+      <p class="muted" style="margin:12px 0;">
+        No file? <button class="btn btn-outline" id="togglePaste" style="padding:4px 12px;font-size:13px;">Paste text instead</button>
+      </p>
+
+      <div class="mt-24">
+        <button class="btn btn-primary btn-lg" id="continueBtn" disabled>Continue →</button>
+        <div class="status is-info" id="statusMsg" style="display:none;"></div>
+      </div>
+    </div>
+
+    <script src="/assets/backend-client.js"></script>
+    <script src="/assets/flow-state.js"></script>
+    <script>
+      "use strict";
+      const zone    = document.getElementById("uploadZone");
+      const input   = document.getElementById("fileInput");
+      const preview = document.getElementById("filePreview");
+      const nameEl  = document.getElementById("fileName");
+      const sizeEl  = document.getElementById("fileSize");
+      const clearBtn= document.getElementById("clearFile");
+      const toggleBtn=document.getElementById("togglePaste");
+      const pasteSection=document.getElementById("pasteSection");
+      const pasteInput=document.getElementById("pasteInput");
+      const continueBtn=document.getElementById("continueBtn");
+      const statusMsg=document.getElementById("statusMsg");
+
+      let selectedFile = null;
+
+      function formatBytes(b) {
+        if (b < 1024) return b + " B";
+        if (b < 1048576) return (b/1024).toFixed(1) + " KB";
+        return (b/1048576).toFixed(1) + " MB";
+      }
+
+      function setFile(file) {
+        selectedFile = file;
+        nameEl.textContent = file.name;
+        sizeEl.textContent = formatBytes(file.size);
+        preview.style.display = "block";
+        zone.style.display = "none";
+        checkReady();
+      }
+
+      function clearFile() {
+        selectedFile = null;
+        input.value = "";
+        preview.style.display = "none";
+        zone.style.display = "block";
+        checkReady();
+      }
+
+      function checkReady() {
+        const hasPaste = pasteInput.value.trim().length > 100;
+        continueBtn.disabled = !selectedFile && !hasPaste;
+      }
+
+      // Drag-and-drop
+      zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag-over"); });
+      zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+      zone.addEventListener("drop", e => {
+        e.preventDefault();
+        zone.classList.remove("drag-over");
+        const f = e.dataTransfer?.files?.[0];
+        if (f) setFile(f);
+      });
+      zone.addEventListener("click", () => input.click());
+      input.addEventListener("change", () => { if (input.files[0]) setFile(input.files[0]); });
+      clearBtn.addEventListener("click", clearFile);
+
+      toggleBtn.addEventListener("click", () => {
+        const shown = pasteSection.style.display !== "none";
+        pasteSection.style.display = shown ? "none" : "block";
+        toggleBtn.textContent = shown ? "Paste text instead" : "Hide paste";
+      });
+
+      pasteInput.addEventListener("input", checkReady);
+
+      continueBtn.addEventListener("click", async () => {
+        continueBtn.disabled = true;
+        statusMsg.style.display = "block";
+        statusMsg.textContent = "Reading resume…";
+        statusMsg.className = "status is-info";
+
+        try {
+          let text = "";
+          let filename = "pasted-resume.txt";
+
+          if (selectedFile) {
+            filename = selectedFile.name;
+            // Read as text (works for .txt and basic extraction)
+            text = await selectedFile.text();
+          } else {
+            text = pasteInput.value.trim();
+          }
+
+          if (text.length < 50) throw new Error("Resume text too short. Please paste more content.");
+
+          // Try backend upload if available, else store locally
+          if (window.API && API.isEnabledSync()) {
+            await API.uploadResume({ text, filename });
+          }
+
+          FLOW.setResumeUploaded(text, filename);
+          window.location.href = "/target/";
+        } catch (err) {
+          statusMsg.textContent = err.message || "Something went wrong.";
+          statusMsg.className = "status is-error";
+          continueBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

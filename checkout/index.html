@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResumeAI — Checkout</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="page">
+    <nav class="nav">
+      <a href="/pricing/" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">← Back</a>
+      <a href="/landing/" class="nav-logo" style="position:absolute;left:50%;transform:translateX(-50%);">ResumeAI</a>
+    </nav>
+
+    <div class="page-inner" style="max-width:480px;">
+      <h1 class="page-title">Checkout</h1>
+      <p class="page-subtitle">Start your free trial — no charge until the trial ends.</p>
+
+      <div class="card">
+        <div class="flex items-center gap-8" style="margin-bottom:16px;">
+          <span style="font-size:20px;">⚡</span>
+          <span style="font-size:15px;font-weight:600;">ResumeAI Pro</span>
+          <span class="muted" style="margin-left:auto;">14-day free trial</span>
+        </div>
+        <div class="divider"></div>
+        <div class="flex items-center" style="margin:12px 0;">
+          <span class="muted">Today</span>
+          <strong style="margin-left:auto;">$0.00</strong>
+        </div>
+        <div class="flex items-center" style="margin:0 0 20px;">
+          <span class="muted">After trial</span>
+          <strong style="margin-left:auto;">$19 / month</strong>
+        </div>
+
+        <div class="field">
+          <label class="label" for="emailInput">Email</label>
+          <input class="input" id="emailInput" type="email" placeholder="you@example.com" />
+        </div>
+
+        <div class="mt-16">
+          <button class="btn btn-primary btn-lg" id="startTrialBtn" style="width:100%;justify-content:center;">Start free trial</button>
+        </div>
+        <p class="status is-info" id="statusMsg" style="display:none;"></p>
+      </div>
+
+      <p class="muted" style="text-align:center;margin-top:16px;">
+        Cancel anytime. Stripe-secured payment. No charge during trial.
+      </p>
+    </div>
+
+    <script src="/assets/backend-client.js"></script>
+    <script src="/assets/flow-state.js"></script>
+    <script>
+      "use strict";
+      const emailInput   = document.getElementById("emailInput");
+      const startTrialBtn= document.getElementById("startTrialBtn");
+      const statusMsg    = document.getElementById("statusMsg");
+
+      startTrialBtn.addEventListener("click", async () => {
+        const email = emailInput.value.trim();
+        if (!email || !email.includes("@")) {
+          statusMsg.style.display = "block";
+          statusMsg.textContent = "Please enter a valid email.";
+          statusMsg.className = "status is-error";
+          return;
+        }
+        startTrialBtn.disabled = true;
+        statusMsg.style.display = "block";
+        statusMsg.textContent = "Setting up your trial…";
+        statusMsg.className = "status is-info";
+
+        try {
+          if (window.API && API.isEnabledSync()) {
+            await API.devSignIn({ email });
+          }
+          const state = FLOW.getState();
+          FLOW.setSubscribed(state.plan_tier || "pro");
+          FLOW.set({ user_email: email });
+          window.location.href = "/settings/";
+        } catch (err) {
+          statusMsg.textContent = err.message || "Something went wrong.";
+          statusMsg.className = "status is-error";
+          startTrialBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
