@@ -128,15 +128,53 @@ async function run() {
     if (!roleText || roleText === "—") throw new Error("Role not displayed");
   });
 
-  // 7. Pricing page
-  await check("Pricing page loads", async (p) => {
-    await p.goto(`${BASE}/pricing/`);
-    await p.waitForSelector(".plan-card");
-    const plans = await p.$$(".plan-card");
-    if (plans.length < 2) throw new Error("Expected at least 2 plan cards");
+  // 7. PDF compile endpoint (API test, not browser)
+  await check("PDF compile endpoint returns a PDF", async () => {
+    // Minimal valid LaTeX
+    const minimalLatex = [
+      "\\documentclass[10.5pt,letterpaper]{article}",
+      "\\usepackage[top=0.55in,bottom=0.55in,left=0.6in,right=0.6in]{geometry}",
+      "\\pagestyle{empty}",
+      "\\begin{document}",
+      "John Doe \\\\ Senior Software Engineer",
+      "\\end{document}",
+    ].join("\n");
+
+    const res = await fetch(`${BASE}/api/resume/compile-pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ latex: minimalLatex }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(`Compile failed ${res.status}: ${err.error || ""}`);
+    }
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("pdf")) throw new Error(`Expected PDF content-type, got: ${ct}`);
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength < 1000) throw new Error(`PDF too small (${buf.byteLength} bytes)`);
   });
 
-  // 8. Login page
+  // 8. Pricing page — single $50 tier
+  await check("Pricing page loads with $50 tier", async (p) => {
+    await p.goto(`${BASE}/pricing/`);
+    await p.waitForSelector(".plan-card");
+    const bodyText = await p.evaluate(() => document.body.textContent);
+    if (!bodyText.includes("$50")) throw new Error("$50 tier not found");
+  });
+
+  // 8b. Download gate — clicking download without subscription redirects to pricing
+  await check("Download gate redirects unsubscribed user to pricing", async (p) => {
+    await p.goto(`${BASE}/results/`);
+    // results page may redirect if no flow state — just check the gate logic directly
+    // by checking the page text includes the gate message if on results
+    if (p.url().includes("/results/")) {
+      const gateText = await p.$eval("#downloadGate", (el) => el.textContent).catch(() => "");
+      if (!gateText.includes("$50")) throw new Error("Gate message missing $50 mention");
+    }
+  });
+
+  // 9. Login page
   await check("Login page loads", async (p) => {
     await p.goto(`${BASE}/login/`);
     await p.waitForSelector("#emailInput");

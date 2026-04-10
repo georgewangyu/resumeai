@@ -1,9 +1,11 @@
 "use strict";
 
-const fs     = require("fs");
-const http   = require("http");
-const path   = require("path");
-const crypto = require("crypto");
+const fs             = require("fs");
+const http           = require("http");
+const path           = require("path");
+const crypto         = require("crypto");
+const os             = require("os");
+const { execSync }   = require("child_process");
 
 const REPO_ROOT  = path.resolve(__dirname, "..");
 const ENV_PATH   = path.join(__dirname, ".env");
@@ -151,7 +153,7 @@ async function maybeCreateStripeCheckout(user, tier) {
 }
 
 // ── Claude analysis ───────────────────────────────────────
-async function callClaude(systemPrompt, userMessage) {
+async function callClaude(systemPrompt, userMessage, maxTokens = 4096) {
   const apiKey = String(process.env.ANTHROPIC_API_KEY || "").trim();
   if (!apiKey) return null; // offline mode
 
@@ -164,7 +166,7 @@ async function callClaude(systemPrompt, userMessage) {
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 2048,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     }),
@@ -172,6 +174,115 @@ async function callClaude(systemPrompt, userMessage) {
   if (!res.ok) throw new Error(`Claude API error ${res.status}`);
   const data = await res.json();
   return data.content?.[0]?.text || null;
+}
+
+// ── LaTeX template ────────────────────────────────────────
+const LATEX_TEMPLATE = `
+% ── ResumeAI canonical template ──
+% Requirements: pdflatex + texlive-base
+% DO NOT change margins or font size — they are calibrated for full-page fill.
+\\documentclass[10.5pt,letterpaper]{article}
+\\usepackage[top=0.55in,bottom=0.55in,left=0.6in,right=0.6in]{geometry}
+\\usepackage{enumitem}
+\\usepackage[hidelinks]{hyperref}
+\\usepackage[T1]{fontenc}
+\\usepackage{lmodern}
+\\usepackage{titlesec}
+\\usepackage{microtype}
+
+\\pagestyle{empty}
+\\setlength{\\parindent}{0pt}
+\\setlength{\\parskip}{0pt}
+
+\\titleformat{\\section}{\\bfseries\\normalsize\\uppercase}{}{0em}{}[\\vspace{-5pt}\\rule{\\linewidth}{0.5pt}]
+\\titlespacing*{\\section}{0pt}{9pt}{4pt}
+
+\\setlist[itemize]{noitemsep,topsep=1pt,parsep=0pt,partopsep=0pt,leftmargin=1.2em,label=\\textbullet}
+
+\\begin{document}
+
+% ════ HEADER ════
+\\begin{center}
+  {\\LARGE \\textbf{FULL NAME}} \\\\[3pt]
+  {\\small City, State $\\bullet$ \\href{mailto:email@example.com}{email@example.com} $\\bullet$ (555) 555-5555 $\\bullet$ \\href{https://linkedin.com/in/handle}{linkedin.com/in/handle}}
+\\end{center}
+
+\\vspace{3pt}
+
+% ════ SUMMARY ════
+\\section{Summary}
+2--3 sentence role-targeted summary. Sentence 1: who you are and what you build. Sentence 2: your specific technical or domain edge. Sentence 3 (optional): what you are optimizing for in your next role. No buzzwords. No first-person pronouns.
+
+% ════ EXPERIENCE ════
+\\section{Experience}
+
+\\noindent\\textbf{Company Name} \\hfill City, State \\\\
+\\textit{Job Title} \\hfill Month Year -- Month Year
+
+\\begin{itemize}
+  \\item Outcome-first bullet: [measurable result] by [specific action] across [scope/scale].
+  \\item Technical-depth bullet: [system/problem] solved via [specific approach], achieving [result].
+  \\item Leadership bullet: led/mentored/drove [scope] resulting in [outcome].
+  \\item Add 3--6 bullets per role. Every bullet must trace to the source resume or user answers.
+\\end{itemize}
+
+% ════ SKILLS ════
+\\section{Skills}
+\\textbf{Languages:} Python, Go, TypeScript, Java \\\\
+\\textbf{Frameworks \\& Tools:} React, Kafka, Spark, Kubernetes, Terraform \\\\
+\\textbf{Infrastructure:} AWS, GCP, PostgreSQL, Redis, Elasticsearch \\\\
+\\textbf{Domains:} Distributed Systems, Data Infrastructure, Platform Engineering
+
+% ════ EDUCATION ════
+\\section{Education}
+\\noindent\\textbf{University Name} \\hfill City, State \\\\
+\\textit{B.S. Computer Science} \\hfill Year
+
+\\end{document}
+`.trim();
+
+// ── PDF compilation ───────────────────────────────────────
+function compilePdf(latex) {
+  const id      = randomId("tex");
+  const tmpDir  = os.tmpdir();
+  const texPath = path.join(tmpDir, `${id}.tex`);
+  const pdfPath = path.join(tmpDir, `${id}.pdf`);
+  const logPath = path.join(tmpDir, `${id}.log`);
+
+  fs.writeFileSync(texPath, latex, "utf8");
+
+  const cmd = `pdflatex -interaction=nonstopmode -output-directory="${tmpDir}" "${texPath}"`;
+  try {
+    // Two passes for stable output
+    execSync(cmd, { timeout: 30000, stdio: "pipe" });
+    execSync(cmd, { timeout: 30000, stdio: "pipe" });
+  } catch (err) {
+    // pdflatex exits non-zero on warnings — check if PDF was produced anyway
+    if (!fs.existsSync(pdfPath)) {
+      const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8").slice(-2000) : "";
+      throw new Error(`pdflatex failed: ${log || err.message}`);
+    }
+  }
+
+  if (!fs.existsSync(pdfPath)) throw new Error("PDF not generated by pdflatex.");
+
+  // Extract page count from log
+  let pages = 1;
+  if (fs.existsSync(logPath)) {
+    const log = fs.readFileSync(logPath, "utf8");
+    const m = log.match(/Output written on .+\((\d+) page/);
+    if (m) pages = parseInt(m[1], 10);
+  }
+
+  const pdfBytes = fs.readFileSync(pdfPath);
+
+  // Cleanup all pdflatex artifacts
+  [texPath, pdfPath, logPath,
+   path.join(tmpDir, `${id}.aux`),
+   path.join(tmpDir, `${id}.out`),
+  ].forEach((f) => { try { fs.unlinkSync(f); } catch (_) {} });
+
+  return { pdfBytes, pages };
 }
 
 function simulateAnalysis(resumeText, targetRole, targetLevel, jd) {
@@ -254,9 +365,30 @@ async function handleApi(req, res, url) {
 
     let analysis;
     try {
-      const systemPrompt = `You are an expert resume analyst applying three review lenses: hiring-manager, recruiter, and ATS. Return ONLY valid JSON matching this schema: { "fit_score": number 0-100, "strengths": string[], "gaps": string[], "ats_flags": string[], "structured_questions": [{ "id": string, "text": string, "hint": string }] }. Be specific and honest. Do not inflate scores.`;
-      const userMessage  = `Resume:\n${resume_text}\n\nTarget role: ${target_role} (${target_level})\nVariant family: ${variant_family || "general"}\n${job_description ? `\nJob description:\n${job_description}` : ""}`;
-      const raw = await callClaude(systemPrompt, userMessage);
+      const systemPrompt = `You are an expert resume analyst. Apply three review lenses to the candidate's resume:
+
+HIRING-MANAGER LENS: Does the resume signal the right level? Is ownership language specific (led, owned, drove) or generic (contributed, helped)? Are impact claims measurable and defensible? Is there evidence of technical depth for the target level?
+
+RECRUITER LENS: Can role fit be determined in a 10-second scan? Are job titles and company names prominent? Does the summary match the target role? Are dates and tenure patterns clean?
+
+ATS LENS: Are section headings standard (Experience, Education, Skills)? Do keywords from the JD appear naturally? Are there formatting risks (tables, columns, graphics)? Is contact info parseable?
+
+Return ONLY valid JSON with this exact schema:
+{
+  "fit_score": <integer 0-100 — do not inflate, a 60 with honest gaps beats an 85 with vague praise>,
+  "fit_rationale": <one sentence explaining the score>,
+  "strengths": [<3-5 specific strengths, not generic>],
+  "gaps": [<ordered by severity — keep actionable, not generic>],
+  "ats_flags": [<formatting or keyword issues>],
+  "structured_questions": [
+    { "id": "q1", "text": <question targeting a specific gap, answerable in 1-3 sentences>, "hint": <what to include> }
+  ]
+}
+
+Generate 3-5 structured questions. Each must target one specific gap. Focus on: metrics, scope, ownership, team size, timeline, outcome. Do not ask about information already present in the resume.`;
+
+      const userMessage = `Resume:\n${resume_text}\n\nTarget role: ${target_role} (${target_level})\nVariant family: ${variant_family || "general"}${job_description ? `\n\nJob description:\n${job_description}` : ""}`;
+      const raw = await callClaude(systemPrompt, userMessage, 2048);
       if (raw) {
         const match = raw.match(/\{[\s\S]*\}/);
         analysis = match ? JSON.parse(match[0]) : simulateAnalysis(resume_text, target_role, target_level, job_description);
@@ -277,16 +409,73 @@ async function handleApi(req, res, url) {
 
     let variant;
     try {
-      const answersText = Object.entries(answers || {}).map(([k, v]) => `Q${k}: ${v}`).join("\n");
-      const systemPrompt = `You are an expert resume writer. Rewrite the provided resume as a role-targeted LaTeX document. Return ONLY the complete LaTeX source code, nothing else. Use standard resume LaTeX conventions. Apply impact-first bullet rewrites. Do not fabricate metrics not present in the original or user answers.`;
-      const userMessage  = `Original resume:\n${resume_text}\n\nTarget: ${target_role} (${target_level})\nVariant family: ${variant_family || "general"}\n${job_description ? `\nJob description:\n${job_description}` : ""}\n\nUser answers to gap questions:\n${answersText}\n\nAnalysis gaps to address:\n${(analysis?.gaps || []).join(", ")}`;
-      const raw = await callClaude(systemPrompt, userMessage);
-      variant = { latex: raw || "% Connect ANTHROPIC_API_KEY to generate LaTeX output.\n", simulated: !raw };
-    } catch (_) {
-      variant = { latex: "% Variant generation failed. Check ANTHROPIC_API_KEY.\n", simulated: true };
+      const answersText = Object.entries(answers || {})
+        .filter(([, v]) => v && String(v).trim())
+        .map(([k, v]) => `Answer to Q${k}: ${v}`)
+        .join("\n");
+
+      const systemPrompt = `You are an expert resume writer producing a role-targeted LaTeX resume variant.
+
+WRITING RULES:
+- Outcome-first bullets: start with the measurable result, then the action, then scope.
+- Concrete verbs only: led, built, reduced, shipped, owned, designed, drove, migrated.
+- Forbidden verbs: contributed, helped, assisted, worked on, involved in.
+- Every metric (latency, scale, cost, team size) must come from the source resume or the user's answers. Never fabricate.
+- If a gap cannot be filled from user answers, flag it with a [TBD: ...] placeholder — do not approximate.
+- Summary: 2-3 sentences, role-targeted. Sentence 1: who they are. Sentence 2: technical edge. No first-person pronouns. No buzzwords.
+- Keep bullets to one line where possible; two lines maximum.
+- Write 4-6 bullets per role to ensure the page is full.
+
+PAGE FILL REQUIREMENT:
+- The output must fill at least 85% of one letter-sized page.
+- Do not add fake content — instead expand real bullets with available detail from the source resume and answers.
+- Adjust spacing with \\vspace{-2pt} between sections only if the content naturally overflows slightly.
+
+ATS RULES:
+- Section headings must be: Summary, Experience, Skills, Education (standard labels).
+- No tables, no multi-column layouts, no text boxes, no graphics.
+- Contact info must be plain text in the document header.
+
+OUTPUT: Return ONLY the complete, compilable LaTeX source code. No markdown fences, no commentary, no explanation. Start with \\documentclass and end with \\end{document}.
+
+Use this exact template structure:
+${LATEX_TEMPLATE}`;
+
+      const userMessage = `SOURCE RESUME:\n${resume_text}\n\nTARGET: ${target_role} (${target_level})\nVARIANT FAMILY: ${variant_family || "general"}${job_description ? `\n\nJOB DESCRIPTION:\n${job_description}` : ""}\n\nUSER ANSWERS TO GAP QUESTIONS:\n${answersText || "(none provided)"}\n\nANALYSIS GAPS TO ADDRESS:\n${(analysis?.gaps || []).join("\n")}`;
+
+      const raw = await callClaude(systemPrompt, userMessage, 4096);
+      // Strip markdown fences if Claude wrapped anyway
+      const latex = raw
+        ? raw.replace(/^```(?:latex|tex)?\n?/i, "").replace(/\n?```$/, "").trim()
+        : null;
+      variant = { latex: latex || "% Connect ANTHROPIC_API_KEY to generate LaTeX output.\n", simulated: !latex };
+    } catch (err) {
+      variant = { latex: `% Variant generation failed: ${err.message}\n`, simulated: true };
     }
 
     return json(res, 200, { ok: true, variant });
+  }
+
+  // Compile LaTeX → PDF
+  if (req.method === "POST" && url.pathname === "/api/resume/compile-pdf") {
+    const body = await parseBody(req);
+    const latex = String(body.latex || "").trim();
+    if (!latex) return json(res, 400, { error: "No LaTeX content provided." });
+    if (!latex.includes("\\documentclass")) return json(res, 400, { error: "Content does not look like valid LaTeX." });
+
+    try {
+      const { pdfBytes, pages } = compilePdf(latex);
+      res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'attachment; filename="resume-variant.pdf"',
+        "Content-Length": pdfBytes.length,
+        "X-Page-Count": String(pages),
+      });
+      res.end(pdfBytes);
+    } catch (err) {
+      return json(res, 500, { error: `PDF compilation failed: ${err.message.slice(0, 400)}` });
+    }
+    return;
   }
 
   // Stripe checkout session

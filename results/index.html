@@ -20,7 +20,6 @@
   <body class="page">
     <nav class="nav">
       <a href="/landing/" class="nav-logo">ResumeAI</a>
-      <a href="/pricing/" class="btn btn-primary" style="padding:8px 18px;">Upgrade to save variants</a>
     </nav>
 
     <div class="page-inner">
@@ -62,7 +61,8 @@
 
       <div class="divider"></div>
 
-      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px;">Download your variant</h2>
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 8px;">Download your variant</h2>
+      <p class="muted" style="margin:0 0 20px;font-size:13px;" id="downloadGate">Subscribe to download your resume — $50/mo, cancel anytime.</p>
 
       <button class="download-btn" id="downloadLatex">
         <div class="download-btn-icon">📝</div>
@@ -70,7 +70,7 @@
           <span class="download-btn-title">LaTeX source (.tex)</span>
           <span class="download-btn-hint">Edit and compile with any LaTeX engine</span>
         </div>
-        <span style="color:var(--text-muted);font-size:13px;">↓</span>
+        <span style="color:var(--text-muted);font-size:13px;" id="latexIcon">→</span>
       </button>
 
       <button class="download-btn mt-16" id="downloadPdf">
@@ -79,14 +79,8 @@
           <span class="download-btn-title">PDF (.pdf)</span>
           <span class="download-btn-hint">Ready to attach and submit</span>
         </div>
-        <span style="color:var(--text-muted);font-size:13px;">↓</span>
+        <span style="color:var(--text-muted);font-size:13px;" id="pdfIcon">→</span>
       </button>
-
-      <div class="card mt-24" style="background:var(--primary-soft);border-color:var(--primary-glow);">
-        <p style="margin:0 0 4px;font-weight:600;">Want to save this variant and generate more?</p>
-        <p class="muted" style="margin:0 0 14px;">Upgrade to keep all your variants, track versions, and generate cover letters.</p>
-        <a href="/pricing/" class="btn btn-primary">See plans →</a>
-      </div>
 
       <div class="mt-24" style="text-align:center;">
         <a href="/upload/" class="btn btn-ghost">Start over with a new resume</a>
@@ -127,7 +121,25 @@
         ? flags.map(f => `<p style="margin:4px 0;font-size:13px;">• ${f}</p>`).join("")
         : '<p style="margin:0;font-size:13px;">No major ATS issues detected.</p>';
 
-      // Downloads
+      // Subscription gate
+      const isSubscribed = state.subscription_status === "active";
+
+      // Update UI based on subscription
+      const gateMsg   = document.getElementById("downloadGate");
+      const latexIcon = document.getElementById("latexIcon");
+      const pdfIcon   = document.getElementById("pdfIcon");
+      if (isSubscribed) {
+        gateMsg.style.display = "none";
+        latexIcon.textContent = "↓";
+        pdfIcon.textContent   = "↓";
+      }
+
+      function goToCheckout() {
+        // Store return path so checkout can redirect back
+        sessionStorage.setItem("resumeai_return", "/results/");
+        window.location.href = "/pricing/";
+      }
+
       function downloadText(filename, content) {
         const blob = new Blob([content], { type: "text/plain" });
         const url  = URL.createObjectURL(blob);
@@ -137,16 +149,47 @@
       }
 
       document.getElementById("downloadLatex").addEventListener("click", () => {
-        const tex = variant.latex || variant.message || "% LaTeX variant will appear here once the backend is connected.\n";
+        if (!isSubscribed) { goToCheckout(); return; }
+        const tex = variant.latex || "% No LaTeX generated.\n";
         downloadText("resume-variant.tex", tex);
       });
 
-      document.getElementById("downloadPdf").addEventListener("click", () => {
-        // PDF compilation requires server-side pdflatex — redirect to backend endpoint
-        if (window.API && API.isEnabledSync()) {
-          window.location.href = "/api/resume/download-pdf";
-        } else {
-          alert("PDF download requires the API backend to be running. Use the LaTeX source for now.");
+      document.getElementById("downloadPdf").addEventListener("click", async function () {
+        if (!isSubscribed) { goToCheckout(); return; }
+
+        const tex = variant.latex || "";
+        if (!tex || tex.startsWith("%")) {
+          alert("No variant generated yet. Complete the flow first.");
+          return;
+        }
+        const btn = this;
+        btn.disabled = true;
+        pdfIcon.textContent = "…";
+
+        try {
+          const res = await fetch("/api/resume/compile-pdf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ latex: tex }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Compilation failed." }));
+            throw new Error(err.error || `Server error ${res.status}`);
+          }
+          const pages = res.headers.get("X-Page-Count");
+          const blob  = await res.blob();
+          const url   = URL.createObjectURL(blob);
+          const a     = document.createElement("a");
+          a.href = url; a.download = "resume-variant.pdf"; a.click();
+          URL.revokeObjectURL(url);
+          if (pages && parseInt(pages) > 2) {
+            setTimeout(() => alert(`Note: your variant is ${pages} pages. Consider trimming bullets for a 1-page resume.`), 500);
+          }
+        } catch (err) {
+          alert(`PDF download failed: ${err.message}`);
+        } finally {
+          btn.disabled = false;
+          pdfIcon.textContent = "↓";
         }
       });
     </script>
