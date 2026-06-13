@@ -3,7 +3,9 @@
   "private": true,
   "scripts": {
     "dev": "node backend/server.js",
-    "qa:flow": "node scripts/qa-flow.js"
+    "qa:flow": "node scripts/qa-flow.js",
+    "check": "node --check backend/server.js && node --check scripts/qa-flow.js",
+    "test": "npm run check"
   },
   "devDependencies": {
     "puppeteer": "^24.40.0"

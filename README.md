@@ -42,6 +42,19 @@ resumeai/
 └── README.md
 ```
 
+## Validation
+
+```bash
+npm test
+```
+
+For the browser-based funnel check, start the backend first and then run:
+
+```bash
+node backend/server.js
+npm run qa:flow
+```
+
 ## Agent Boundary
 
 - Public agent specs and prompt library live here.
