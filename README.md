@@ -2,6 +2,23 @@
 
 Resume variant engine. Upload a resume, get role-targeted LaTeX and PDF variants.
 
+ResumeAI is a narrow workflow for turning one source resume plus role context into a defensible resume variant. It keeps LaTeX as the canonical output and treats the PDF as a generated artifact.
+
+## Quick start
+
+```bash
+npm install
+npm run dev
+```
+
+Then open the local page served by `backend/server.js`.
+
+Run checks with:
+
+```bash
+npm test
+```
+
 ## Flow
 
 ```
